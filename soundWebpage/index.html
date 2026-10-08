@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>O2 </title>
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --fg: #f0efe9;
+    --dim: #8a8a90;
+    --faint: #4a4a4f;
+    --accent: #d4a24e;
+    --accent-dim: rgba(212, 162, 78, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  #field {
+    position: fixed;
+    inset: 0;
+    display: block;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+
+  h1 {
+    font-weight: 300;
+    font-size: clamp(28px, 7vw, 56px);
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+    margin: 0 0 56px 0;
+    max-width: 18ch;
+    color: var(--fg);
+  }
+
+  .play-btn {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    border: 1px solid rgba(240, 239, 233, 0.25);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.4s ease;
+  }
+
+  .play-btn:hover { border-color: rgba(212, 162, 78, 0.6); }
+
+  .play-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+
+  .play-btn .glow {
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+  }
+
+  .play-btn.playing .glow {
+    opacity: 1;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.9); opacity: 0; }
+    50% { transform: scale(1.15); opacity: 0.5; }
+  }
+
+  .icon-play, .icon-pause {
+    fill: var(--fg);
+    transition: fill 0.3s ease;
+  }
+
+  .play-btn.playing .icon-play { display: none; }
+  .play-btn:not(.playing) .icon-pause { display: none; }
+
+  .progress-track {
+    width: 220px;
+    height: 1px;
+    background: rgba(240, 239, 233, 0.12);
+    margin-top: 36px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.1s linear;
+  }
+
+  .meta {
+    margin-top: 12px;
+    font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: 0.04em;
+    min-height: 16px;
+  }
+
+  .hint {
+    margin-top: 44px;
+    max-width: 34ch;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--dim);
+  }
+
+  .hint strong {
+    font-weight: 400;
+    color: var(--fg);
+  }
+
+  .error {
+    margin-top: 14px;
+    min-height: 20px;
+    max-width: 34ch;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--accent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .play-btn.playing .glow { animation: none; opacity: 0.7; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="field"></canvas>
+
+<div class="wrap">
+
+  <h1>O2 </h1>
+
+  <button class="play-btn" id="playBtn" aria-label="Lire l'audio">
+    <div class="glow"></div>
+    <svg class="icon-play" width="22" height="22" viewBox="0 0 24 24" style="margin-left:3px;">
+      <path d="M8 5v14l11-7z"/>
+    </svg>
+    <svg class="icon-pause" width="20" height="20" viewBox="0 0 24 24">
+      <path d="M6 5h4v14H6zM14 5h4v14h-4z"/>
+    </svg>
+  </button>
+
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="meta" id="timeLabel">0:00 / 0:00</div>
+
+  <p class="hint" id="hint">
+    Appuyez sur <strong>lecture</strong> pour écouter O2 
+   Press  <strong>play</strong> to listen O2  </p>
+  <p class="error" id="errorNote" role="status" aria-live="polite"></p>
+   
+  <audio id="audio" preload="metadata" loop>
+    <source src="sound/Ambiant.mp3" type="audio/wav">
+  </audio>
+</div>
+
+<script>
+  // ---- Point cloud field ----
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  let w, h, points = [];
+  const POINT_COUNT = 140;
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function initPoints() {
+    points = [];
+    for (let i = 0; i < POINT_COUNT; i++) {
+      points.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 1.1 + 0.3,
+        baseAlpha: Math.random() * 0.35 + 0.05,
+        vx: (Math.random() - 0.5) * 0.06,
+        vy: (Math.random() - 0.5) * 0.06,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  initPoints();
+
+  let playing = false;
+  let t = 0;
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 - 40;
+
+    for (const p of points) {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+
+      let alpha = p.baseAlpha;
+      if (playing) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        const wave = Math.sin(t * 0.04 - d * 0.02 + p.phase) * 0.5 + 0.5;
+        alpha = p.baseAlpha + wave * 0.25 * Math.max(0, 1 - d / 600);
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(240, 239, 233, ${alpha})`;
+      ctx.fill();
+    }
+
+    t++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  // ---- Audio controls ----
+  const audio = document.getElementById('audio');
+  const btn = document.getElementById('playBtn');
+  const progressFill = document.getElementById('progressFill');
+  const timeLabel = document.getElementById('timeLabel');
+  const errorNote = document.getElementById('errorNote');
+
+  function fmt(s) {
+    if (!isFinite(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  }
+
+  function setPlaying(state) {
+    playing = state;
+    btn.classList.toggle('playing', state);
+    btn.setAttribute('aria-label', state ? "Mettre l'audio en pause" : "Lire l'audio");
+  }
+
+  btn.addEventListener('click', async () => {
+    errorNote.textContent = '';
+    if (audio.paused) {
+      try {
+        await audio.play();
+        setPlaying(true);
+      } catch (e) {
+        setPlaying(false);
+        errorNote.textContent = "Le son n'a pas pu démarrer. Vérifiez le volume et le mode silencieux, puis réessayez.";
+      }
+    } else {
+      audio.pause();
+      setPlaying(false);
+    }
+  });
+
+  audio.addEventListener('timeupdate', () => {
+    if (audio.duration) {
+      progressFill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      timeLabel.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+    }
+  });
+
+  audio.addEventListener('loadedmetadata', () => {
+    timeLabel.textContent = `0:00 / ${fmt(audio.duration)}`;
+  });
+
+  audio.addEventListener('error', () => {
+    setPlaying(false);
+    errorNote.textContent = "Le fichier audio est introuvable. Rechargez la page ou revenez plus tard.";
+  });
+
+  audio.addEventListener('ended', () => {
+    setPlaying(false);
+    progressFill.style.width = '0%';
+  });
+</script>
+
+</body>
+</html>
